@@ -1,5 +1,41 @@
+# Environment
 .env
-*.pyc
+.env.local
+.env.*.local
+
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
 downloads/
+*.egg-info/
+.eggs/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.venv
+env/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Bot specific
+*.session
+*.session-journal
+downloads/
+wasabi_uploader_bot.session*
