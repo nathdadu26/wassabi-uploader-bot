@@ -39,3 +39,5 @@ Thumbs.db
 *.session-journal
 downloads/
 wasabi_uploader_bot.session*
+*.session-shm
+*.session-wal
