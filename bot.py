@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import math
 import logging
@@ -8,6 +9,10 @@ from dotenv import load_dotenv
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiohttp import web
+
+# Fix encoding issues
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 # ---------------- CONFIG ----------------
 load_dotenv()
