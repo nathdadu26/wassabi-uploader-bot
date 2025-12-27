@@ -5,23 +5,23 @@ import math
 import logging
 import boto3
 import asyncio
+import threading
 from dotenv import load_dotenv
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiohttp import web
 
-# Fix encoding issues
+# Fix encoding
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
 
-# ---------------- CONFIG ----------------
+# Config
 load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 
-# Wasabi Configuration
 WASABI_ACCESS_KEY = os.getenv("WASABI_ACCESS_KEY")
 WASABI_SECRET_KEY = os.getenv("WASABI_SECRET_KEY")
 WASABI_BUCKET_NAME = os.getenv("WASABI_BUCKET_NAME")
@@ -29,19 +29,17 @@ WASABI_REGION = os.getenv("WASABI_REGION", "us-east-1")
 PRESIGNED_URL_EXPIRY = int(os.getenv("PRESIGNED_URL_EXPIRY", "604800"))
 
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
+PORT = int(os.getenv("PORT", "8080"))
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-PORT = int(os.getenv("PORT", "8080"))
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Bot running status
 bot_running = False
 
-# ---------------- WASABI CLIENT ----------------
+# Wasabi client
 s3 = boto3.client(
     "s3",
     endpoint_url=f"https://s3.{WASABI_REGION}.wasabisys.com",
@@ -50,7 +48,7 @@ s3 = boto3.client(
     region_name=WASABI_REGION
 )
 
-# ---------------- BOT ----------------
+# Bot
 app = Client(
     "wasabi_uploader_bot",
     bot_token=BOT_TOKEN,
@@ -58,7 +56,7 @@ app = Client(
     api_hash=API_HASH
 )
 
-# ---------------- HELPERS ----------------
+# Helpers
 def human_bytes(size):
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if size < 1024:
@@ -66,7 +64,6 @@ def human_bytes(size):
         size /= 1024
 
 def generate_presigned_url(file_key, expiration=PRESIGNED_URL_EXPIRY):
-    """Generate presigned URL for file access"""
     try:
         presigned_url = s3.generate_presigned_url(
             'get_object',
@@ -110,7 +107,7 @@ async def progress(current, total, msg, start, status, filename):
     except:
         pass
 
-# ---------------- UPLOAD PROGRESS ----------------
+# Upload progress
 class UploadProgress:
     def __init__(self, msg, filename, filesize):
         self.msg = msg
@@ -149,7 +146,7 @@ class UploadProgress:
         except:
             pass
 
-# ---------------- COMMANDS ----------------
+# Commands
 @app.on_message(filters.command("start"))
 async def start(_, message):
     await message.reply(
@@ -317,7 +314,7 @@ async def total_files(_, message):
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)}")
 
-# ---------------- MEDIA HANDLER ----------------
+# Media handler
 @app.on_message(filters.video | filters.document)
 async def handle_media(_, message):
     media = message.video or message.document
@@ -333,7 +330,6 @@ async def handle_media(_, message):
 
     start_time = time.time()
 
-    # -------- DOWNLOAD --------
     await message.download(
         file_name=local_path,
         progress=progress,
@@ -347,7 +343,6 @@ async def handle_media(_, message):
 
     file_size = os.path.getsize(local_path)
 
-    # -------- UPLOAD TO WASABI --------
     upload_progress = UploadProgress(
         status_msg,
         safe_name,
@@ -364,14 +359,12 @@ async def handle_media(_, message):
 
     os.remove(local_path)
 
-    # Generate presigned URL for file access
     public_link = generate_presigned_url(r2_key)
     
     if not public_link:
         await status_msg.edit("❌ Error: Could not generate download link!")
         return
 
-    # -------- TEXT WITH LINKS --------
     response_text = (
         f"✅ **Upload Completed!**\n\n"
         f"📁 File Name: `{safe_name}`\n"
@@ -386,9 +379,8 @@ async def handle_media(_, message):
         disable_web_page_preview=False
     )
 
-# ---------------- HEALTH CHECK ----------------
+# Health check endpoint
 async def health_check(request):
-    """Health check endpoint for Koyeb"""
     health_status = {
         "status": "healthy" if bot_running else "starting",
         "bot_running": bot_running,
@@ -397,7 +389,6 @@ async def health_check(request):
     return web.json_response(health_status)
 
 async def start_health_server():
-    """Start aiohttp server for health checks"""
     app_web = web.Application()
     app_web.router.add_get('/health', health_check)
     
@@ -410,33 +401,29 @@ async def start_health_server():
     return runner
 
 async def main():
-    """Main async function"""
     global bot_running
     
     try:
-        # Start health check server
         runner = await start_health_server()
         
-        # Start bot
-        logger.info("🤖 Starting bot...")
+        logger.info("🤖 Starting Telegram bot...")
         async with app:
             bot_running = True
-            logger.info("🤖 Bot is running with Wasabi storage...")
+            logger.info("✅ Bot is running with Wasabi storage...")
             await app.idle()
             
     except Exception as e:
         logger.error(f"Error: {str(e)}")
         bot_running = False
+        raise
     finally:
         bot_running = False
 
-# ---------------- RUN ----------------
 if __name__ == "__main__":
     try:
-        logger.info("🤖 Bot starting...")
         asyncio.run(main())
     except KeyboardInterrupt:
         logger.info("Bot stopped by user")
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}")
-        raise
+        sys.exit(1)
