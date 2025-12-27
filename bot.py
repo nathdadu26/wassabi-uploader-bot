@@ -53,7 +53,8 @@ app = Client(
     "wasabi_uploader_bot",
     bot_token=BOT_TOKEN,
     api_id=API_ID,
-    api_hash=API_HASH
+    api_hash=API_HASH,
+    workdir="."  # Session files in current directory
 )
 
 # Helpers
