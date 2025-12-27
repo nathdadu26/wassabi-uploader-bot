@@ -407,10 +407,25 @@ async def main():
         runner = await start_health_server()
         
         logger.info("🤖 Starting Telegram bot...")
-        async with app:
-            bot_running = True
-            logger.info("✅ Bot is running with Wasabi storage...")
-            await app.idle()
+        
+        # Configure pyrogram with time sync retry
+        app.config = app.config or {}
+        
+        try:
+            async with app:
+                bot_running = True
+                logger.info("✅ Bot is running with Wasabi storage...")
+                await app.idle()
+        except Exception as e:
+            if "msg_id" in str(e) or "time" in str(e).lower():
+                logger.warning(f"Time sync error, retrying: {str(e)}")
+                await asyncio.sleep(5)
+                async with app:
+                    bot_running = True
+                    logger.info("✅ Bot is running with Wasabi storage...")
+                    await app.idle()
+            else:
+                raise
             
     except Exception as e:
         logger.error(f"Error: {str(e)}")
