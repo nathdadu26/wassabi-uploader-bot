@@ -3,9 +3,11 @@ import time
 import math
 import logging
 import boto3
+import asyncio
 from dotenv import load_dotenv
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiohttp import web
 
 # ---------------- CONFIG ----------------
 load_dotenv()
@@ -18,16 +20,21 @@ API_HASH = os.getenv("API_HASH")
 WASABI_ACCESS_KEY = os.getenv("WASABI_ACCESS_KEY")
 WASABI_SECRET_KEY = os.getenv("WASABI_SECRET_KEY")
 WASABI_BUCKET_NAME = os.getenv("WASABI_BUCKET_NAME")
-WASABI_REGION = os.getenv("WASABI_REGION", "us-east-1")  # Default region
-PRESIGNED_URL_EXPIRY = int(os.getenv("PRESIGNED_URL_EXPIRY", "604800"))  # 7 days in seconds
+WASABI_REGION = os.getenv("WASABI_REGION", "us-east-1")
+PRESIGNED_URL_EXPIRY = int(os.getenv("PRESIGNED_URL_EXPIRY", "604800"))
 
-# Admin user ID
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+PORT = int(os.getenv("PORT", "8080"))
+
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Bot running status
+bot_running = False
 
 # ---------------- WASABI CLIENT ----------------
 s3 = boto3.client(
@@ -63,7 +70,7 @@ def generate_presigned_url(file_key, expiration=PRESIGNED_URL_EXPIRY):
         )
         return presigned_url
     except Exception as e:
-        logging.error(f"Error generating presigned URL: {str(e)}")
+        logger.error(f"Error generating presigned URL: {str(e)}")
         return None
 
 def make_bar(current, total, length=20):
@@ -131,7 +138,6 @@ class UploadProgress:
         )
 
         try:
-            import asyncio
             asyncio.get_event_loop().create_task(
                 self.msg.edit(text)
             )
@@ -153,7 +159,6 @@ async def myfiles(_, message):
     user_id = str(message.from_user.id)
     
     try:
-        # List all files in user's folder
         response = s3.list_objects_v2(
             Bucket=WASABI_BUCKET_NAME,
             Prefix=f"{user_id}/"
@@ -376,6 +381,55 @@ async def handle_media(_, message):
         disable_web_page_preview=False
     )
 
+# ---------------- HEALTH CHECK ----------------
+async def health_check(request):
+    """Health check endpoint for Koyeb"""
+    health_status = {
+        "status": "healthy" if bot_running else "starting",
+        "bot_running": bot_running,
+        "timestamp": time.time()
+    }
+    return web.json_response(health_status)
+
+async def start_health_server():
+    """Start aiohttp server for health checks"""
+    app_web = web.Application()
+    app_web.router.add_get('/health', health_check)
+    
+    runner = web.AppRunner(app_web)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    
+    logger.info(f"Health check server started on port {PORT}")
+    return runner
+
+async def main():
+    """Main async function"""
+    global bot_running
+    
+    try:
+        # Start health check server
+        runner = await start_health_server()
+        
+        # Start bot
+        logger.info("🤖 Starting bot...")
+        async with app:
+            bot_running = True
+            logger.info("🤖 Bot is running with Wasabi storage...")
+            await app.idle()
+            
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        bot_running = False
+    finally:
+        bot_running = False
+
 # ---------------- RUN ----------------
-print("🤖 Bot is running with Wasabi storage...")
-app.run()
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
+    except Exception as e:
+        logger.error(f"Fatal error: {str(e)}")
